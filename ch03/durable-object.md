@@ -1,0 +1,182 @@
+## Durable Objectを使ってメモを保存する
+
+この節では、`Uzumibi::KV` （Cloudflare Durable Objectベース）を使って、データを永続的に保存するメモアプリケーションを作成します。
+
+### アーキテクチャの確認
+
+Cloudflare Durable Objectは、Cloudflare Workers上でステートフルなオブジェクトを管理するためのサービスです。通常のWorkersはステートレス（リクエスト間で状態を保持しない）ですが、Durable Objectを使うことで、データの永続的な読み書きが可能になります。
+
+Uzumibiでは、Durable Objectを簡易的なKey-Valueストアとして利用できるようにラップした `Uzumibi::KV` APIを提供しています。
+
+```
+クライアント → Cloudflare Worker (Uzumibi)
+                ↓ Uzumibi::KV.get/set
+              UzumibiKVObject (Durable Object)
+                ↓
+              SQLiteストレージ（永続化）
+```
+
+`UzumibiKVObject` は、JavaScriptグルーコード内で定義されたDurable Objectクラスです。内部ではDurable Objectの `ctx.storage` API（SQLiteベース）を使ってデータを保存しています。
+
+### プロジェクトの作成
+
+外部サービス連携を有効にしたプロジェクトを作成します。
+
+```bash
+uzumibi new --template cloudflare --features enable-external memo-app
+cd memo-app
+pnpm install
+```
+
+生成された `wrangler.jsonc` を確認すると、Durable Objectのバインディングが自動的に設定されています。
+
+```jsonc
+{
+    "durable_objects": {
+        "bindings": [
+            {
+                "name": "UZUMIBI_KV_DATA",
+                "class_name": "UzumibiKVObject"
+            }
+        ]
+    },
+    "migrations": [
+        {
+            "tag": "v1",
+            "new_sqlite_classes": [
+                "UzumibiKVObject"
+            ]
+        }
+    ]
+}
+```
+
+### 実装
+
+`lib/app.rb` を以下のように編集して、シンプルなメモの保存・取得APIを作成します。
+
+```ruby
+class App < Uzumibi::Router
+  get "/" do |req, res|
+    fetch_assets
+  end
+
+  # メモの取得
+  get "/api/memo/:key" do |req, res|
+    key = req.params[:key]
+    value = Uzumibi::KV.get(key)
+
+    if value
+      res.status_code = 200
+      res.headers = {
+        "content-type" => "application/json",
+      }
+      res.body = "{\"key\": \"#{key}\", \"value\": \"#{value}\"}"
+    else
+      res.status_code = 404
+      res.headers = {
+        "content-type" => "application/json",
+      }
+      res.body = "{\"error\": \"not found\", \"key\": \"#{key}\"}"
+    end
+    res
+  end
+
+  # メモの保存
+  post "/api/memo/:key" do |req, res|
+    key = req.params[:key]
+    value = req.body
+
+    debug_console("Saving memo: #{key} = #{value}")
+    Uzumibi::KV.set(key, value)
+
+    res.status_code = 201
+    res.headers = {
+      "content-type" => "application/json",
+    }
+    res.body = "{\"key\": \"#{key}\", \"value\": \"#{value}\", \"status\": \"saved\"}"
+    res
+  end
+
+  # メモの更新
+  put "/api/memo/:key" do |req, res|
+    key = req.params[:key]
+    value = req.body
+
+    existing = Uzumibi::KV.get(key)
+    if existing
+      Uzumibi::KV.set(key, value)
+      res.status_code = 200
+      res.headers = {
+        "content-type" => "application/json",
+      }
+      res.body = "{\"key\": \"#{key}\", \"value\": \"#{value}\", \"status\": \"updated\"}"
+    else
+      res.status_code = 404
+      res.headers = {
+        "content-type" => "application/json",
+      }
+      res.body = "{\"error\": \"not found\", \"key\": \"#{key}\"}"
+    end
+    res
+  end
+end
+
+$APP = App.new
+```
+
+#### コードの解説
+
+**値の取得**
+
+```ruby
+value = Uzumibi::KV.get(key)
+```
+
+`Uzumibi::KV.get` は、指定したキーに対応する値を文字列で返します。キーが存在しない場合は `nil` を返します。
+
+**値の保存**
+
+```ruby
+Uzumibi::KV.set(key, value)
+```
+
+`Uzumibi::KV.set` は、キーと値のペアを保存します。同じキーで再度 `set` すると値が上書きされます。キーも値も文字列型です。
+
+### 動作確認
+
+開発サーバーを起動します。
+
+```bash
+pnpm run dev
+```
+
+curlでメモの保存と取得を試します。
+
+```bash
+# メモを保存
+$ curl -X POST -d "買い物リスト: 牛乳、パン、卵" \
+  http://localhost:8787/api/memo/shopping
+{"key": "shopping", "value": "買い物リスト: 牛乳、パン、卵", "status": "saved"}
+
+# メモを取得
+$ curl http://localhost:8787/api/memo/shopping
+{"key": "shopping", "value": "買い物リスト: 牛乳、パン、卵"}
+
+# 存在しないキー
+$ curl http://localhost:8787/api/memo/unknown
+{"error": "not found", "key": "unknown"}
+
+# メモを更新
+$ curl -X PUT -d "買い物リスト: 牛乳、パン、卵、バター" \
+  http://localhost:8787/api/memo/shopping
+{"key": "shopping", "value": "買い物リスト: 牛乳、パン、卵、バター", "status": "updated"}
+```
+
+Durable Objectに保存されたデータは、Workerの再起動やデプロイをまたいで永続化されます。ローカル開発時のデータは `.wrangler/` ディレクトリ内に保存されます。
+
+### 注意事項
+
+- `Uzumibi::KV` のキーと値はどちらも文字列型です。数値やオブジェクトを保存する場合は、JSON文字列などに変換してから保存してください。
+- ローカル開発時（`wrangler dev`）のDurable Objectデータは、プロジェクトの `.wrangler/` ディレクトリ内のローカルストレージに保存されます。
+- 本番環境にデプロイした場合、データはCloudflareのグローバルネットワーク上に保存されます。
