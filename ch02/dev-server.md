@@ -12,8 +12,8 @@ pnpm run dev
 
 このコマンドは内部で以下の処理を順番に実行します。
 
-1. **Rustのビルド**: `cargo build --package hello-uzumibi --target wasm32-unknown-unknown --release` を実行し、`lib/app.rb` をmrubyバイトコードにコンパイルした上で、WASMモジュール（`.wasm`）を生成します。
-2. **WASMファイルのコピー**: ビルドされた `.wasm` ファイルを `src/` ディレクトリにコピーします。
+1. **Rustのビルド**: `cargo` コマンドを実行し、`lib/app.rb` をmrubyバイトコードにコンパイルした上で、Wasmモジュール（`.wasm`）を生成します。
+2. **Wasmファイルのコピー**: ビルドされた `.wasm` ファイルを `src/` ディレクトリにコピーします。
 3. **Wrangler devの起動**: `wrangler dev` を実行して、ローカル開発サーバーを起動します。
 
 初回のビルドはRustクレートのダウンロードとコンパイルが必要なため、数分かかることがあります。2回目以降は差分ビルドとなるため、高速に起動します。
@@ -21,11 +21,17 @@ pnpm run dev
 ビルドが完了すると、以下のようなメッセージが表示されます。
 
 ```
- ⛅️ wrangler 4.54.0
--------------------
+ ⛅️ wrangler 4.73.0
+───────────────────
+
+Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
+Your Worker has access to the following bindings:
+Binding            Resource      Mode
+env.ASSETS         Assets        local
+...
 
 ⎔ Starting local server...
-[wrangler:inf] Ready on http://localhost:8787
+[wrangler:info] Ready on http://localhost:8787
 ```
 
 ### 動作確認
@@ -37,6 +43,8 @@ pnpm run dev
 ブラウザで `http://localhost:8787` にアクセスすると、`public/index.html` が表示されます。「APIを呼び出す」ボタンをクリックすると、`/api/hello` エンドポイントからのレスポンスが表示されます。
 
 #### curlでの確認
+
+APIエンドポイントをcurlで呼び出してみましょう。
 
 ```bash
 # ルートパス（静的アセット）
@@ -60,7 +68,7 @@ Received: test data
 
 ### コードの変更を反映する
 
-`lib/app.rb` を変更した場合、現在のUzumibiでは自動リロードには対応していません。WASMの再ビルドが必要なため、開発サーバーを一度停止（`Ctrl+C`）してから、再度 `pnpm run dev` を実行してください。
+`lib/app.rb` を変更した場合、現在のUzumibiでは自動リロードには対応していません。Wasmの再ビルドが必要なため、開発サーバーを一度停止（`Ctrl+C`）してから、再度 `pnpm run dev` を実行してください。
 
 ```bash
 # Ctrl+C で停止
@@ -77,7 +85,7 @@ mrubyコンパイラのビルドに `clang` が必要です。macOSの場合は 
 
 #### ビルドエラー: `wasm32-unknown-unknown target not found`
 
-WASMターゲットが追加されていない可能性があります。
+Wasmターゲットが追加されていない可能性があります。
 
 ```bash
 rustup target add wasm32-unknown-unknown

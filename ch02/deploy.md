@@ -35,34 +35,38 @@ pnpm run deploy
 
 このコマンドは内部で `wrangler deploy` を実行します。
 
-デプロイが完了すると、以下のようなメッセージが表示されます。
+デプロイが開始すると、以下のようなメッセージが表示されます。
 
 ```
- ⛅️ wrangler 4.54.0
--------------------
-
-Total Upload: 1024.00 KiB / gzip: 512.00 KiB
-Worker Startup Time: 15 ms
-Uploaded hello-uzumibi (3.00 sec)
-Deployed hello-uzumibi triggers (1.00 sec)
-  https://hello-uzumibi.<your-subdomain>.workers.dev
-Current Version ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ ⛅️ wrangler 4.73.0
+───────────────────
+🌀 Building list of assets...
+✨ Read 3 files from the assets directory /Users/udzura/zenn-wip/hello-uzumibi/public
+🌀 Starting asset upload...
 ```
 
-表示されたURLにアクセスすると、デプロイされたアプリケーションが動作していることを確認できます。
+この時、ログに出てくる容量の表示に注目してください。Uzumibiの生成するアーティファクトは、圧縮前でも650KiB程度、gzip圧縮をすれば200KiB程度になります。
+
+```
+Total Upload: 655.99 KiB / gzip: 204.28 KiB
+```
+
+Cloudflare Workersの無料プランの場合、3MBまでのアセットをアップロードでき、また推奨設定は圧縮後に1MBを切っていることと言われています。
+
+容量が大きい場合Cloudflare Workersでは提供が難しい場合がありますが、Uzumibiとmruby/edgeのアプリケーション、できるだけ小さなサイズに収まるようにミニマルな機能提供をするよう設計されています。したがってエッジアプリケーションの開発の上で非常に有利と言えるでしょう。
+
+最終的に表示されたURLにアクセスすると、デプロイされたアプリケーションが動作していることを確認できます。
+
+```
+Uploaded hello-uzumibi (14.81 sec)
+Deployed hello-uzumibi triggers (7.49 sec)
+  https://hello-uzumibi.XXXXXX.workers.dev
+Current Version ID: b7bcc75c-e557-4c39-b643-xxxxxxxx
+```
 
 ### 動作確認
 
-```bash
-# デプロイされたアプリケーションにアクセス
-$ curl https://hello-uzumibi.<your-subdomain>.workers.dev/api/hello
-Hello from Uzumibi! Running on mruby/edge 3.2.0
-
-$ curl https://hello-uzumibi.<your-subdomain>.workers.dev/api/greet/CloudflareWorkers
-{"message": "Hello, CloudflareWorkers!"}
-```
-
-ブラウザで `https://hello-uzumibi.<your-subdomain>.workers.dev/` にアクセスすれば、先ほど作成したHTMLページも表示されます。
+ブラウザで `https://hello-uzumibi.<your-subdomain>.workers.dev/` にアクセスすれば、先ほど作成したHTMLページが表示されます。
 
 ### wrangler.jsoncの設定
 
